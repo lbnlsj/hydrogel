@@ -5,6 +5,8 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 import os
+import time
+import psutil
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -108,11 +110,65 @@ class Discriminator(nn.Module):
             nn.Conv2d(512, 1, 3, stride=1, padding=1),  # 改为 3x3 kernel, padding=1
             nn.Sigmoid()
         )
+
     def forward(self, x):
         return self.model(x)
 
 
+def get_optimal_batch_size(data_dir, device='cpu'):
+    # 测试不同batch sizes
+    batch_sizes = [2, 4, 8, 16, 32, 64]
+
+    transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
+
+    dataset = FiberHydrogelDataset(data_dir, transform=transform)
+
+    times = []
+    memory_usage = []
+
+    for batch_size in batch_sizes:
+        try:
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+            # 测试一个mini-batch的处理时间
+            start = time.time()
+            for i, (real_A, real_B) in enumerate(dataloader):
+                real_A = real_A.to(device)
+                real_B = real_B.to(device)
+                if i == 0:
+                    break
+            end = time.time()
+
+            times.append(end - start)
+
+            # 获取当前内存使用
+            if device == 'cuda':
+                memory = torch.cuda.memory_allocated() / 1e6  # MB
+            else:
+                memory = psutil.Process().memory_info().rss / 1e6  # MB
+            memory_usage.append(memory)
+
+        except RuntimeError as e:
+            print(f'Batch size {batch_size} caused out of memory')
+            break
+
+    # 选择处理时间短且内存使用适中的batch size
+    scores = [time * mem for time, mem in zip(times, memory_usage)]
+    optimal_idx = np.argmin(scores)
+    optimal_batch = batch_sizes[optimal_idx]
+
+    return optimal_batch
+
+
 def train_model(data_dir, mode='displacement', num_epochs=100, device='cpu'):
+    # 获取最优batch size
+    batch_size = get_optimal_batch_size(data_dir, device)
+    print(f'Using optimal batch size: {batch_size}')
+
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.ToTensor(),
@@ -120,7 +176,7 @@ def train_model(data_dir, mode='displacement', num_epochs=100, device='cpu'):
     ])
 
     dataset = FiberHydrogelDataset(data_dir, mode=mode, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=min(4, os.cpu_count()))
 
     G_AB = Generator().to(device)
     G_BA = Generator().to(device)
@@ -253,7 +309,7 @@ def test_model(model_path, test_image_path, device='cpu', mode='displacement'):
 
 if __name__ == "__main__":
     data_dir = "data"
-    device = torch.device("cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     num_epochs = 100
 
     print("Training displacement model...")
