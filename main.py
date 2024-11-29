@@ -176,7 +176,7 @@ def train_model(data_dir, mode='displacement', num_epochs=100, device='cpu'):
     ])
 
     dataset = FiberHydrogelDataset(data_dir, mode=mode, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=36, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=24, shuffle=True)
 
     G_AB = Generator().to(device)
     G_BA = Generator().to(device)
