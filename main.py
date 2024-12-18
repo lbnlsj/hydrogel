@@ -166,8 +166,8 @@ def get_optimal_batch_size(data_dir, device='cpu'):
 
 def train_model(data_dir, mode='displacement', num_epochs=100, device='cpu'):
     # 获取最优batch size
-    # batch_size = get_optimal_batch_size(data_dir, device)
-    # print(f'Using optimal batch size: {batch_size}')
+    batch_size = get_optimal_batch_size(data_dir, device)
+    print(f'Using optimal batch size: {batch_size}')
 
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
@@ -176,7 +176,7 @@ def train_model(data_dir, mode='displacement', num_epochs=100, device='cpu'):
     ])
 
     dataset = FiberHydrogelDataset(data_dir, mode=mode, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=24, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=min(4, os.cpu_count()))
 
     G_AB = Generator().to(device)
     G_BA = Generator().to(device)
